@@ -22,10 +22,11 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 _DEFAULTS = {
-    "model":           "whisper-1",
-    "language":        "en",
-    "obsidian_vault":  os.path.expanduser("~/Documents/Vault"),
-    "obsidian_folder": "Voice Notes",
+    "model":                "whisper-1",
+    "language":             "en",
+    "obsidian_vault":       os.path.expanduser("~/Documents/Vault"),
+    "obsidian_folder":      "Voice Notes",
+    "obsidian_auto_save":   "false",
 }
 
 
@@ -84,6 +85,12 @@ def get_transcription(tid):
             "SELECT * FROM transcriptions WHERE id = ?", (tid,)
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_latest_id():
+    with _connect() as conn:
+        row = conn.execute("SELECT id FROM transcriptions ORDER BY id DESC LIMIT 1").fetchone()
+    return row["id"] if row else None
 
 
 def delete_transcription(tid):

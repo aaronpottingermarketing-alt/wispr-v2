@@ -1,5 +1,4 @@
 import os
-import time
 import threading
 import webbrowser
 import rumps
@@ -19,8 +18,7 @@ ICON_IDLE = "🎙"
 ICON_REC  = "🔴"
 ICON_BUSY = "⏳"
 
-RIGHT_OPTION_KEYCODE  = 61
-HANDS_FREE_HOLD_SECS  = 1.5  # hold this long to lock into hands-free mode
+RIGHT_OPTION_KEYCODE = 61
 
 
 class WisprLocal(rumps.App):
@@ -33,13 +31,10 @@ class WisprLocal(rumps.App):
             rumps.MenuItem("Quit", callback=self._quit),
         ]
         self._recorder   = Recorder()
-        self._recording   = False
-        self._hands_free  = False
-        self._lock        = threading.Lock()
-        self._monitor     = None
-        self._target_app  = None
-        self._press_time  = 0.0   # when Right Option was pressed
-        self._hf_timer    = None  # fires after HANDS_FREE_HOLD_SECS
+        self._recording  = False
+        self._lock       = threading.Lock()
+        self._monitor    = None
+        self._target_app = None
 
         server.start_server(port=DASHBOARD_PORT)
         rumps.Timer(self._setup_listener, 0.5).start()
@@ -60,32 +55,13 @@ class WisprLocal(rumps.App):
 
                 with self._lock:
                     if held and not self._recording:
-                        # Start recording + begin hands-free countdown
                         self._recording  = True
-                        self._press_time = time.time()
                         from AppKit import NSWorkspace
                         self._target_app = NSWorkspace.sharedWorkspace().frontmostApplication()
                         threading.Thread(target=self._begin_recording, daemon=True).start()
-                        # After HANDS_FREE_HOLD_SECS, lock into hands-free
-                        self._hf_timer = threading.Timer(
-                            HANDS_FREE_HOLD_SECS, self._activate_hands_free
-                        )
-                        self._hf_timer.start()
-
-                    elif held and self._hands_free:
-                        # Tap while hands-free → stop
-                        self._hands_free = False
-                        self._recording  = False
+                    elif not held and self._recording:
+                        self._recording = False
                         threading.Thread(target=self._finish_recording, daemon=True).start()
-
-                    elif not held:
-                        # Key released
-                        if self._hf_timer:
-                            self._hf_timer.cancel()
-                            self._hf_timer = None
-                        if self._recording and not self._hands_free:
-                            self._recording = False
-                            threading.Thread(target=self._finish_recording, daemon=True).start()
 
             self._monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
                 NSEventMaskFlagsChanged, handler
@@ -97,12 +73,6 @@ class WisprLocal(rumps.App):
 
         except Exception as e:
             print(f"[wispr] listener setup error: {e}", flush=True)
-
-    def _activate_hands_free(self):
-        with self._lock:
-            if self._recording:
-                self._hands_free = True
-        print("[wispr] hands-free mode locked", flush=True)
 
     # ── Overlay button commands ───────────────────────────────────────────────
 
@@ -140,6 +110,15 @@ class WisprLocal(rumps.App):
             word_count = len(text.split())
             cost_usd = round(duration_s * 0.006 / 60, 6)
             db.save_transcription(text, duration_s, word_count, cost_usd)
+            # Auto-save to Obsidian if enabled
+            settings = db.get_settings()
+            if settings.get("obsidian_auto_save") == "true":
+                try:
+                    tid = db.get_latest_id()
+                    if tid:
+                        _save_to_obsidian(tid, settings)
+                except Exception as e:
+                    print(f"[wispr] obsidian auto-save error: {e}", flush=True)
             preview = text[:50] + ("…" if len(text) > 50 else "")
             if pasted:
                 rumps.notification("Wispr Local", "✓ Pasted", preview, sound=False)
@@ -159,6 +138,23 @@ class WisprLocal(rumps.App):
 
     def _quit(self, _):
         rumps.quit_application()
+
+
+def _save_to_obsidian(tid, settings):
+    row = db.get_transcription(tid)
+    if not row:
+        return
+    vault = os.path.expanduser(settings.get("obsidian_vault", "~/Documents/Vault"))
+    folder = settings.get("obsidian_folder", "Voice Notes")
+    save_dir = os.path.join(vault, folder)
+    os.makedirs(save_dir, exist_ok=True)
+    created = row["created_at"][:16].replace(":", "-")
+    filepath = _os.path.join(save_dir, f"{created} voice-note.md")
+    words = row.get("word_count") or len(row["text"].split())
+    cost = row.get("cost_usd") or 0
+    content = f"# Voice Note — {row['created_at'][:16]}\n\n{row['text']}\n\n---\n*Transcribed by Wispr Local · {words} words · ${cost:.4f}*\n"
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 if __name__ == "__main__":

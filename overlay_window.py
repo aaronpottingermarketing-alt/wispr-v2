@@ -6,8 +6,6 @@ import sys
 import threading
 import objc
 import AppKit
-import numpy as np
-import sounddevice as sd
 from AppKit import (
     NSApplication, NSWindow, NSView, NSBezierPath, NSColor, NSButton,
     NSBackingStoreBuffered, NSMakeRect, NSMakeSize,
@@ -21,15 +19,23 @@ from Foundation import NSTimer, NSRunLoop, NSDefaultRunLoopMode
 # Command file for IPC back to main app
 CMD_FILE = sys.argv[1] if len(sys.argv) > 1 else "/tmp/wispr_cmd"
 
-_level = 0.0
+_level = 0.5
 _level_lock = threading.Lock()
 
 
-def _audio_cb(indata, frames, time, status):
+def _read_stdin():
+    """Read audio levels piped from main process."""
     global _level
-    rms = float(np.sqrt(np.mean(indata ** 2)))
-    with _level_lock:
-        _level = min(1.0, rms * 30)
+    import sys
+    for line in sys.stdin:
+        try:
+            with _level_lock:
+                _level = float(line.strip())
+        except ValueError:
+            pass
+
+
+threading.Thread(target=_read_stdin, daemon=True).start()
 
 
 def _send(cmd):
@@ -192,14 +198,5 @@ timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_
     1 / 30, wave, "tick:", None, True
 )
 NSRunLoop.currentRunLoop().addTimer_forMode_(timer, NSDefaultRunLoopMode)
-
-try:
-    stream = sd.InputStream(
-        samplerate=16000, channels=1, dtype="float32", callback=_audio_cb
-    )
-    stream.start()
-except Exception:
-    # Mic unavailable (e.g. Zoom) — show static animation, don't crash
-    stream = None
 
 app.run()

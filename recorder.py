@@ -5,6 +5,10 @@ import numpy as np
 import sounddevice as sd
 from config import SAMPLE_RATE, CHANNELS
 
+# Current RMS level — written by audio callback, read by overlay
+current_level = 0.0
+_level_lock = threading.Lock()
+
 
 class Recorder:
     def __init__(self):
@@ -27,6 +31,10 @@ class Recorder:
             self._stream = None
 
     def _callback(self, indata, frames, time, status):
+        global current_level
+        rms = float(np.sqrt(np.mean(indata.astype(np.float32) ** 2))) / 32768.0
+        with _level_lock:
+            current_level = min(1.0, rms * 30)
         with self._lock:
             self._frames.append(indata.copy())
 

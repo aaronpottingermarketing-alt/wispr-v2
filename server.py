@@ -3,9 +3,11 @@ import threading
 import logging
 from datetime import datetime
 from flask import Flask, jsonify, request, render_template
+from flask_cors import CORS
 import db
 
 app = Flask(__name__, template_folder="templates")
+CORS(app)
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)  # suppress Flask request logs in terminal
 

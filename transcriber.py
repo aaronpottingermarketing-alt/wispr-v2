@@ -6,6 +6,17 @@ from config import WHISPER_MODEL, LANGUAGE
 
 _client = None
 
+_CLEANUP_PROMPT = """Clean up this voice transcription. Rules:
+- Remove filler words: um, uh, er, like, you know, sort of, kind of, basically, literally, right
+- Remove repeated words or phrases (e.g. "I want I want to" → "I want to")
+- Fix homophones based on context (their/there/they're, to/too/two, etc.)
+- Fix obvious transcription errors based on context
+- Keep the meaning and tone exactly the same
+- Do NOT add punctuation that wasn't implied, do NOT rephrase or summarise
+- Return only the cleaned text, nothing else
+
+Transcription: """
+
 
 def get_client():
     global _client
@@ -28,8 +39,29 @@ def transcribe(wav_buf):
             language=language,
         )
         duration_s = round(time.time() - t0, 2)
-        text = result.text.strip()
-        return (text, duration_s) if text else (None, 0)
+        raw = result.text.strip()
+        if not raw:
+            return None, 0
+        cleaned = _cleanup(raw)
+        print(f"[wispr] raw:     {repr(raw)}", flush=True)
+        print(f"[wispr] cleaned: {repr(cleaned)}", flush=True)
+        return (cleaned, duration_s) if cleaned else (None, 0)
     except Exception as e:
         print(f"[wispr] transcription error: {e}")
         return None, 0
+
+
+def _cleanup(text):
+    """Use GPT-4o-mini to strip fillers, repetitions and fix homophones."""
+    try:
+        response = get_client().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": _CLEANUP_PROMPT + text}],
+            max_tokens=500,
+            temperature=0,
+        )
+        cleaned = response.choices[0].message.content.strip()
+        return cleaned if cleaned else text
+    except Exception as e:
+        print(f"[wispr] cleanup error: {e}", flush=True)
+        return text  # fall back to raw transcript
