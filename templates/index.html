@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wispr Local</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #111114;
+    --surface: #1e1e23;
+    --card:    #26262d;
+    --border:  #33333d;
+    --text:    #e8e8ee;
+    --muted:   #888899;
+    --accent:  #6ee7b7;
+    --red:     #f87171;
+    --radius:  10px;
+    --font:    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+
+  /* Layout */
+  header { display: flex; align-items: center; gap: 10px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+  header span { font-size: 20px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: auto; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  nav { display: flex; gap: 2px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); }
+  nav button { background: none; border: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 6px 6px 0 0; transition: color .15s; }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main { padding: 24px; max-width: 860px; }
+
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  /* Search */
+  .search-row { display: flex; gap: 10px; margin-bottom: 18px; }
+  .search-row input { flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 9px 14px; font: inherit; font-size: 13px; outline: none; }
+  .search-row input:focus { border-color: var(--accent); }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; }
+  .card-meta { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .card-meta time { color: var(--muted); font-size: 12px; }
+  .card-meta .badge { font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 4px; padding: 2px 7px; }
+  .card-text { line-height: 1.55; color: var(--text); font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+  .card-text.collapsed { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .expand-btn { background: none; border: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 0 0; }
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; transition: background .12s, border-color .12s; }
+  .btn:hover { background: var(--border); }
+  .btn.accent { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn.accent:hover { opacity: .85; }
+  .btn.danger:hover { background: var(--red); border-color: var(--red); color: #000; }
+  .btn.success { background: #065f46; border-color: #065f46; color: var(--accent); }
+
+  /* Pagination */
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 18px; }
+  .pagination button { padding: 6px 12px; }
+  .pagination span { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 8px; }
+  .stat-card .value { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+  .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .chart-wrap h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 16px; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* Settings */
+  .settings-form { max-width: 480px; }
+  .field { margin-bottom: 20px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .field input, .field select { width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 9px 12px; font: inherit; font-size: 13px; outline: none; }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field input[readonly] { opacity: .5; cursor: not-allowed; }
+  .field select option { background: var(--card); }
+  .field .hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+  .save-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .save-msg { font-size: 12px; color: var(--accent); opacity: 0; transition: opacity .3s; }
+  .save-msg.show { opacity: 1; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 18px; font-size: 13px; transform: translateY(80px); opacity: 0; transition: all .25s; pointer-events: none; max-width: 320px; z-index: 99; }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.ok { border-color: var(--accent); color: var(--accent); }
+  #toast.err { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+  <span>🎙</span>
+  <h1>Wispr Local</h1>
+  <div class="live-dot" title="Running"></div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('history', this)">History</button>
+  <button onclick="switchTab('usage', this)">Usage</button>
+  <button onclick="switchTab('settings', this)">Settings</button>
+</nav>
+
+<main>
+
+  <!-- HISTORY TAB -->
+  <div id="tab-history" class="tab active">
+    <div class="search-row">
+      <input id="search" type="text" placeholder="Search transcriptions…" oninput="debounceSearch()">
+    </div>
+    <div id="history-list"></div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- USAGE TAB -->
+  <div id="tab-usage" class="tab">
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="chart-wrap">
+      <h3>Daily transcriptions — last 14 days</h3>
+      <canvas id="dailyChart" height="80"></canvas>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div id="tab-settings" class="tab">
+    <div class="settings-form">
+      <div class="field">
+        <label>Trigger hotkey</label>
+        <input type="text" value="Right Option (hold to record)" readonly>
+        <div class="hint">Restart the app to change the hotkey (edit config.py).</div>
+      </div>
+      <div class="field">
+        <label>Whisper model</label>
+        <select id="s-model">
+          <option value="whisper-1">whisper-1 (OpenAI API)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Language</label>
+        <select id="s-language">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="it">Italian</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="ja">Japanese</option>
+          <option value="zh">Chinese</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Obsidian vault path</label>
+        <input type="text" id="s-vault" placeholder="~/Documents/Vault">
+      </div>
+      <div class="field">
+        <label>Voice notes folder (inside vault)</label>
+        <input type="text" id="s-folder" placeholder="Voice Notes">
+        <div class="hint">Notes are saved as: YYYY-MM-DD HH-MM voice-note.md</div>
+      </div>
+      <div class="save-row">
+        <button class="btn accent" onclick="saveSettings()">Save settings</button>
+        <span class="save-msg" id="save-msg">Saved ✓</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'usage') loadUsage();
+  if (name === 'settings') loadSettings();
+}
+
+// ---------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2800);
+}
+
+// ---------------------------------------------------------------
+// HISTORY
+// ---------------------------------------------------------------
+let currentPage = 1;
+let searchQuery = '';
+let searchTimer;
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchQuery = document.getElementById('search').value.trim();
+    currentPage = 1;
+    loadHistory();
+  }, 300);
+}
+
+async function loadHistory() {
+  const params = new URLSearchParams({ page: currentPage, q: searchQuery });
+  const res = await fetch('/api/history?' + params);
+  const data = await res.json();
+  renderHistory(data);
+}
+
+function renderHistory({ items, total, page }) {
+  const list = document.getElementById('history-list');
+  const perPage = 20;
+  const totalPages = Math.ceil(total / perPage);
+
+  if (!items.length) {
+    list.innerHTML = '<div class="empty">No transcriptions yet — hold Right Option and speak.</div>';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = items.map(item => {
+    const long = item.text.length > 240;
+    const date = new Date(item.created_at.replace(' ', 'T') + 'Z');
+    const dateStr = date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const words = item.word_count || item.text.split(' ').length;
+    const cost = item.cost_usd ? '$' + item.cost_usd.toFixed(4) : '';
+    return `
+      <div class="card" id="card-${item.id}">
+        <div class="card-meta">
+          <time>${dateStr}</time>
+          <span class="badge">${words} words</span>
+          ${cost ? `<span class="badge">${cost}</span>` : ''}
+        </div>
+        <div class="card-text${long ? ' collapsed' : ''}" id="text-${item.id}">${escHtml(item.text)}</div>
+        ${long ? `<button class="expand-btn" onclick="toggleExpand(${item.id}, this)">Show more ↓</button>` : ''}
+        <div class="card-actions">
+          <button class="btn" onclick="copyText(${item.id}, this)">Copy</button>
+          <button class="btn" onclick="saveObsidian(${item.id}, this)">Save to Obsidian</button>
+          <button class="btn danger" onclick="deleteCard(${item.id})">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Pagination
+  const pag = document.getElementById('pagination');
+  pag.innerHTML = '';
+  if (totalPages > 1) {
+    const prev = document.createElement('button');
+    prev.className = 'btn';
+    prev.textContent = '← Prev';
+    prev.disabled = page <= 1;
+    prev.onclick = () => { currentPage--; loadHistory(); };
+    const next = document.createElement('button');
+    next.className = 'btn';
+    next.textContent = 'Next →';
+    next.disabled = page >= totalPages;
+    next.onclick = () => { currentPage++; loadHistory(); };
+    const info = document.createElement('span');
+    info.textContent = `Page ${page} of ${totalPages} · ${total} total`;
+    pag.append(prev, info, next);
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toggleExpand(id, btn) {
+  const el = document.getElementById('text-' + id);
+  if (el.classList.contains('collapsed')) {
+    el.classList.remove('collapsed');
+    btn.textContent = 'Show less ↑';
+  } else {
+    el.classList.add('collapsed');
+    btn.textContent = 'Show more ↓';
+  }
+}
+
+// Store text per card for copy (avoids re-fetching)
+const _texts = {};
+function copyText(id, btn) {
+  const text = document.getElementById('text-' + id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    btn.classList.add('success');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('success'); }, 1500);
+  });
+}
+
+async function saveObsidian(id, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const res = await fetch(`/api/obsidian/${id}`, { method: 'POST' });
+  const data = await res.json();
+  btn.disabled = false;
+  if (data.ok) {
+    btn.textContent = 'Saved ✓';
+    btn.classList.add('success');
+    toast('Saved to Obsidian vault ✓');
+    setTimeout(() => { btn.textContent = 'Save to Obsidian'; btn.classList.remove('success'); }, 2000);
+  } else {
+    btn.textContent = 'Save to Obsidian';
+    toast('Error saving to Obsidian', 'err');
+  }
+}
+
+async function deleteCard(id) {
+  if (!confirm('Delete this transcription?')) return;
+  await fetch(`/api/history/${id}`, { method: 'DELETE' });
+  document.getElementById('card-' + id).remove();
+  const remaining = document.querySelectorAll('.card').length;
+  if (!remaining) loadHistory();
+}
+
+// ---------------------------------------------------------------
+// USAGE
+// ---------------------------------------------------------------
+let chartInstance;
+
+async function loadUsage() {
+  const res = await fetch('/api/usage');
+  const d = await res.json();
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="label">Total notes</div>
+      <div class="value">${d.total_count}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Minutes transcribed</div>
+      <div class="value">${d.total_minutes}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Cost this month</div>
+      <div class="value">$${d.month_cost.toFixed(3)}</div>
+      <div class="sub">${d.month_count} transcriptions</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">All-time cost</div>
+      <div class="value">$${d.total_cost.toFixed(3)}</div>
+    </div>
+  `;
+
+  // Build last-14-days array (fill gaps with 0)
+  const today = new Date();
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d2 = new Date(today);
+    d2.setDate(today.getDate() - 13 + i);
+    return d2.toISOString().slice(0, 10);
+  });
+  const byDay = Object.fromEntries(d.daily.map(r => [r.day, r.count]));
+  const counts = days.map(day => byDay[day] || 0);
+  const labels = days.map(day => {
+    const [, m, dd] = day.split('-');
+    return `${parseInt(m)}/${parseInt(dd)}`;
+  });
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: '#6ee7b755',
+        borderColor: '#6ee7b7',
+        borderWidth: 1.5,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#33333d' }, ticks: { color: '#888899' } },
+        y: { grid: { color: '#33333d' }, ticks: { color: '#888899', stepSize: 1 }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------
+// SETTINGS
+// ---------------------------------------------------------------
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const s = await res.json();
+  document.getElementById('s-language').value = s.language || 'en';
+  document.getElementById('s-vault').value = s.obsidian_vault || '';
+  document.getElementById('s-folder').value = s.obsidian_folder || '';
+}
+
+async function saveSettings() {
+  const payload = {
+    language:        document.getElementById('s-language').value,
+    obsidian_vault:  document.getElementById('s-vault').value.trim(),
+    obsidian_folder: document.getElementById('s-folder').value.trim(),
+  };
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    const msg = document.getElementById('save-msg');
+    msg.classList.add('show');
+    setTimeout(() => msg.classList.remove('show'), 2000);
+  }
+}
+
+// ---------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------
+loadHistory();
+</script>
+</body>
+</html>

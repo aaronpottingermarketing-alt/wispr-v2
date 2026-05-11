@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+venv/
+wispr.db
+wispr.log
+.claude/
+/tmp/wispr_cmd
