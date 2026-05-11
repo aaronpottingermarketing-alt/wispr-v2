@@ -3,6 +3,8 @@ import threading
 import webbrowser
 import rumps
 from dotenv import load_dotenv
+from AppKit import NSWorkspace, NSEvent, NSEventMaskFlagsChanged, NSEventModifierFlagOption
+import ApplicationServices as AX
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -44,19 +46,16 @@ class WisprLocal(rumps.App):
     def _setup_listener(self, sender):
         sender.stop()
         try:
-            from AppKit import NSEvent, NSEventMaskFlagsChanged, NSEventModifierFlagOption
-            import ApplicationServices as AX
             AX.AXIsProcessTrustedWithOptions({AX.kAXTrustedCheckOptionPrompt: True})
 
             def handler(event):
                 if event.keyCode() != RIGHT_OPTION_KEYCODE:
                     return
                 held = bool(event.modifierFlags() & NSEventModifierFlagOption)
-
                 with self._lock:
                     if held and not self._recording:
                         self._recording  = True
-                        from AppKit import NSWorkspace
+                        # Safe — NSWorkspace imported at module level
                         self._target_app = NSWorkspace.sharedWorkspace().frontmostApplication()
                         threading.Thread(target=self._begin_recording, daemon=True).start()
                     elif not held and self._recording:
@@ -67,8 +66,6 @@ class WisprLocal(rumps.App):
                 NSEventMaskFlagsChanged, handler
             )
             print("[wispr] hotkey listener ready", flush=True)
-
-            # Poll for overlay button commands
             rumps.Timer(self._check_overlay_cmd, 0.1).start()
 
         except Exception as e:
@@ -81,16 +78,14 @@ class WisprLocal(rumps.App):
         if cmd == "cancel":
             with self._lock:
                 if self._recording:
-                    self._recording  = False
-                    self._hands_free = False
-            self._recorder.stop()   # discard audio
+                    self._recording = False
+            self._recorder.stop()
             hide_recording()
             self._set_icon(ICON_IDLE)
         elif cmd == "stop":
             with self._lock:
                 if self._recording:
-                    self._recording  = False
-                    self._hands_free = False
+                    self._recording = False
                     threading.Thread(target=self._finish_recording, daemon=True).start()
 
     # ── Recording flow ────────────────────────────────────────────────────────
@@ -110,7 +105,6 @@ class WisprLocal(rumps.App):
             word_count = len(text.split())
             cost_usd = round(duration_s * 0.006 / 60, 6)
             db.save_transcription(text, duration_s, word_count, cost_usd)
-            # Auto-save to Obsidian if enabled
             settings = db.get_settings()
             if settings.get("obsidian_auto_save") == "true":
                 try:
@@ -149,7 +143,7 @@ def _save_to_obsidian(tid, settings):
     save_dir = os.path.join(vault, folder)
     os.makedirs(save_dir, exist_ok=True)
     created = row["created_at"][:16].replace(":", "-")
-    filepath = _os.path.join(save_dir, f"{created} voice-note.md")
+    filepath = os.path.join(save_dir, f"{created} voice-note.md")
     words = row.get("word_count") or len(row["text"].split())
     cost = row.get("cost_usd") or 0
     content = f"# Voice Note — {row['created_at'][:16]}\n\n{row['text']}\n\n---\n*Transcribed by Wispr Local · {words} words · ${cost:.4f}*\n"
