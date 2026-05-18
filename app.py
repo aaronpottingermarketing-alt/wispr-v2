@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 import webbrowser
 import rumps
@@ -32,11 +33,12 @@ class WisprLocal(rumps.App):
             None,
             rumps.MenuItem("Quit", callback=self._quit),
         ]
-        self._recorder   = Recorder()
-        self._recording  = False
-        self._lock       = threading.Lock()
-        self._monitor    = None
-        self._target_app = None
+        self._recorder      = Recorder()
+        self._recording     = False
+        self._lock          = threading.Lock()
+        self._monitor       = None
+        self._target_app    = None
+        self._record_start  = 0.0
 
         server.start_server(port=DASHBOARD_PORT)
         rumps.Timer(self._setup_listener, 0.5).start()
@@ -91,11 +93,15 @@ class WisprLocal(rumps.App):
     # ── Recording flow ────────────────────────────────────────────────────────
 
     def _begin_recording(self):
+        self._record_start = time.monotonic()
         self._set_icon(ICON_REC)
         self._recorder.start()
         show_recording()
 
     def _finish_recording(self):
+        elapsed = time.monotonic() - self._record_start
+        if elapsed < 0.3:
+            time.sleep(0.3 - elapsed)
         wav_buf = self._recorder.stop()
         hide_recording()
         self._set_icon(ICON_BUSY)

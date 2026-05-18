@@ -6,6 +6,7 @@ import threading
 _proc = None
 _pipe_thread = None
 _stop_pipe = threading.Event()
+_proc_lock = threading.Lock()
 _python = sys.executable
 _script = os.path.join(os.path.dirname(__file__), "overlay_window.py")
 CMD_FILE = "/tmp/wispr_cmd"
@@ -22,22 +23,24 @@ def show_recording():
     except FileNotFoundError:
         pass
 
-    if _proc is None or _proc.poll() is not None:
-        _proc = subprocess.Popen(
-            [_python, _script, CMD_FILE],
-            stdin=subprocess.PIPE,
-        )
-        _stop_pipe.clear()
-        _pipe_thread = threading.Thread(target=_stream_levels, daemon=True)
-        _pipe_thread.start()
+    with _proc_lock:
+        if _proc is None or _proc.poll() is not None:
+            _proc = subprocess.Popen(
+                [_python, _script, CMD_FILE],
+                stdin=subprocess.PIPE,
+            )
+            _stop_pipe.clear()
+            _pipe_thread = threading.Thread(target=_stream_levels, daemon=True)
+            _pipe_thread.start()
 
 
 def hide_recording():
     global _proc, _pipe_thread
     _stop_pipe.set()
-    if _proc and _proc.poll() is None:
-        _proc.terminate()
-    _proc = None
+    with _proc_lock:
+        if _proc and _proc.poll() is None:
+            _proc.terminate()
+        _proc = None
 
 
 def _stream_levels():

@@ -39,10 +39,17 @@ class Recorder:
             self._frames.append(indata.copy())
 
     def stop(self):
-        if self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        stream = self._stream
+        self._stream = None
+        if stream:
+            try:
+                stream.stop()
+            except Exception as e:
+                print(f"[wispr] stream stop error: {e}", flush=True)
+            try:
+                stream.close()
+            except Exception as e:
+                print(f"[wispr] stream close error: {e}", flush=True)
         return self._to_wav_bytes()
 
     def _to_wav_bytes(self):
