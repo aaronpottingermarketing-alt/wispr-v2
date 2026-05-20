@@ -11,7 +11,26 @@ import ApplicationServices as AX
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-_LOG = os.path.join(os.path.dirname(__file__), "wispr.log")
+_DIR = os.path.dirname(__file__)
+_LOG = os.path.join(_DIR, "wispr.log")
+_PID = os.path.join(_DIR, "wispr.pid")
+
+
+def _enforce_single_instance():
+    """Kill any previous instance, then write our own PID."""
+    if os.path.exists(_PID):
+        try:
+            old_pid = int(open(_PID).read().strip())
+            if old_pid != os.getpid():
+                os.kill(old_pid, 15)   # SIGTERM
+                time.sleep(1.5)        # give it time to die
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+    with open(_PID, "w") as f:
+        f.write(str(os.getpid()))
+
+
+_enforce_single_instance()
 
 def _log_crash(msg):
     try:
@@ -166,6 +185,10 @@ class WisprLocal(rumps.App):
         webbrowser.open(f"http://localhost:{DASHBOARD_PORT}")
 
     def _quit(self, _):
+        try:
+            os.remove(_PID)
+        except FileNotFoundError:
+            pass
         rumps.quit_application()
 
 
