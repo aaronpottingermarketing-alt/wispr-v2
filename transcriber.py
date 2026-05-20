@@ -42,10 +42,8 @@ def transcribe(wav_buf):
         raw = result.text.strip()
         if not raw:
             return None, 0
-        cleaned = _cleanup(raw)
-        print(f"[wispr] raw:     {repr(raw)}", flush=True)
-        print(f"[wispr] cleaned: {repr(cleaned)}", flush=True)
-        return (cleaned, duration_s) if cleaned else (None, 0)
+        print(f"[wispr] transcript: {repr(raw)}", flush=True)
+        return raw, duration_s
     except Exception as e:
         print(f"[wispr] transcription error: {e}")
         return None, 0
