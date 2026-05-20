@@ -104,8 +104,17 @@ def save_to_obsidian(tid):
 
 def start_server(port=7842):
     db.init()
-    t = threading.Thread(
-        target=lambda: app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False),
-        daemon=True,
-    )
-    t.start()
+
+    def _run():
+        import time
+        for attempt in range(6):
+            try:
+                app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+                return
+            except SystemExit:
+                if attempt < 5:
+                    print(f"[wispr] port {port} busy, retrying in 3s…", flush=True)
+                    time.sleep(3)
+        print(f"[wispr] could not bind port {port} after retries", flush=True)
+
+    threading.Thread(target=_run, daemon=True).start()

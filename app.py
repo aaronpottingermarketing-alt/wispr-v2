@@ -1,5 +1,7 @@
 import os
+import sys
 import time
+import traceback
 import threading
 import webbrowser
 import rumps
@@ -8,6 +10,27 @@ from AppKit import NSWorkspace, NSEvent, NSEventMaskFlagsChanged, NSEventModifie
 import ApplicationServices as AX
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+_LOG = os.path.join(os.path.dirname(__file__), "wispr.log")
+
+def _log_crash(msg):
+    try:
+        with open(_LOG, "a") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
+def _excepthook(exc_type, exc_value, exc_tb):
+    msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    _log_crash(f"[wispr] CRASH (main thread):\n{msg}")
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+def _thread_excepthook(args):
+    msg = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+    _log_crash(f"[wispr] CRASH (thread {args.thread.name}):\n{msg}")
+
+sys.excepthook = _excepthook
+threading.excepthook = _thread_excepthook
 
 from config import DASHBOARD_PORT
 from recorder import Recorder
@@ -121,17 +144,23 @@ class WisprLocal(rumps.App):
                     print(f"[wispr] obsidian auto-save error: {e}", flush=True)
             preview = text[:50] + ("…" if len(text) > 50 else "")
             if pasted:
-                rumps.notification("Wispr Local", "✓ Pasted", preview, sound=False)
+                self._notify("✓ Pasted", preview)
             else:
-                rumps.notification("Wispr Local", "✓ Copied — press Cmd+V", preview, sound=False)
+                self._notify("✓ Copied — press Cmd+V", preview)
         else:
-            rumps.notification("Wispr Local", "", "Nothing detected — try again", sound=False)
+            self._notify("", "Nothing detected — try again")
         self._set_icon(ICON_IDLE)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _set_icon(self, icon):
         rumps.Timer(lambda _: setattr(self, "title", icon), 0).start()
+
+    def _notify(self, subtitle, message):
+        # rumps.notification must run on the main thread — dispatch via zero-delay timer
+        rumps.Timer(
+            lambda _: rumps.notification("Wispr Local", subtitle, message, sound=False), 0
+        ).start()
 
     def _open_dashboard(self, _):
         webbrowser.open(f"http://localhost:{DASHBOARD_PORT}")
